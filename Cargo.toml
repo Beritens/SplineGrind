@@ -1,0 +1,21 @@
+[package]
+name = "SplineGrind"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.16.1", features = ["default", "bevy_dev_tools"] }
+nalgebra = "0.33.2"
+rand = "0.8.5"
+roots = "0.0.8"
+
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
