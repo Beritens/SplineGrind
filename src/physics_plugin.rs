@@ -1,7 +1,8 @@
 use bevy::app::{App, FixedUpdate, Plugin};
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::math::ops::atan2;
 use bevy::math::Quat;
-use bevy::prelude::{Component, IntoScheduleConfigs, Query, Update, With, Without};
+use bevy::prelude::{Component, IntoScheduleConfigs, Query, Update, With, Without, World};
 use nalgebra::Vector2;
 use crate::spines_plugin::{ControlledBy, FollowMouse, Position, Spline, SplinePlugin};
 
@@ -9,8 +10,18 @@ pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
+        app.init_schedule(PhySched);
+        app.add_systems(PhySched,(update_position, apply_gravity.before(update_position), collide.before(update_position)));
+        app.add_systems(FixedUpdate,run_my_schedule);
+    }
+}
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PhySched;
 
-        app.add_systems(FixedUpdate,(update_position, apply_gravity.before(update_position), collide.before(update_position)));
+fn run_my_schedule(world: &mut World) {
+    // Run your schedule multiple times per frame:
+    for _ in 0..8 {
+        world.run_schedule(PhySched);
     }
 }
 
@@ -47,7 +58,7 @@ fn update_position(
     mut query: Query<(&mut VerletObject, &mut Position)>
 ){
 
-    let dt = 0.1;
+    let dt = 0.016;
 
     for (mut verlet_object, mut pos) in &mut query {
 
@@ -96,7 +107,8 @@ fn collide(
             let point = crate::spines_plugin::de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
             let normal = (pos.0 - point).normalize();
             let overground = point + normal * 30.0;
-            let old_offset = ((verlet.position_old - overground).transpose() * normal).x + 6.0;
+            let vel = pos.0 - verlet.position_old;
+            let old_offset = ((verlet.position_old + vel - overground).transpose() * normal).x + 0.02;
 
             if old_offset < 0.0 {
                verlet.position_old -= normal * old_offset;

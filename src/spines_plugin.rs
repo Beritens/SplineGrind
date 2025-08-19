@@ -8,14 +8,15 @@ use bevy::{
 use nalgebra::{Vector, Vector2, Vector3};
 use rand::Rng;
 use roots::{find_root_newton_raphson, SimpleConvergency};
-use crate::physics_plugin::VerletObject;
+use crate::physics_plugin::{PhySched, VerletObject};
 
 pub struct SplinePlugin;
 
 impl Plugin for SplinePlugin {
     fn build(&self, app: &mut App) {
 
-        app.add_systems(Update, (render_spline, render_gradient, move_points, update_position, push, go_to_target));
+        app.add_systems(Update, (render_spline, render_gradient, update_position ));
+        app.add_systems(PhySched, (move_points,  push, go_to_target));
         app.add_systems(PostUpdate, (follow_mouse.after(TransformSystem::TransformPropagate)));
     }
 }
@@ -78,8 +79,10 @@ fn push(
     for (push_pos, pusher) in &pusher_query{
 
         for (mut pushed_pos, mut target, mov) in &mut pushed_query{
-            if((pushed_pos.0 - push_pos.0).norm() <= 100.0){
-                pushed_pos.0 =pushed_pos.0 * 0.6 +  (push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 100.0) * 0.4;
+            let norm = (pushed_pos.0 - push_pos.0).norm();
+            if(norm <= 150.0){
+                let force = 0.5 * (1.0 - norm/150.0);
+                pushed_pos.0 =pushed_pos.0 * (1.0 - force) +  (push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 150.0) * (force);
             }
             // else{
             //     target.0 = mov.default_position
@@ -94,7 +97,7 @@ fn go_to_target(
 ){
 
     for (mut pos, target) in &mut target_query{
-        pos.0 = pos.0 * 0.9 + target.0 * 0.1;
+        pos.0 = pos.0 * 0.98 + target.0 * 0.02;
     }
 
 }
@@ -164,6 +167,7 @@ pub fn de_boors<const LEN: usize>(control_points: &Vec<Vector2<f32>>, t: f32, t_
 
     let t_scale = t * t_vec[t_vec.len() - 1];
 
+
     let base = l - N;
 
     temp.copy_from_slice(&control_points[base..=l]);
@@ -190,7 +194,7 @@ pub fn find_knot<const LEN: usize>(t: f32, t_vec: &Vec<f32>) -> usize {
     let t_scale = t * t_vec[t_vec.len() - 1];
     let l = t_vec
         .partition_point(|&knot| knot <= t_scale)
-        .saturating_sub(1).max(LEN-1). min(t_vec.len() - LEN - 2);
+        .saturating_sub(1).max(LEN-1). min(t_vec.len() - LEN - 1);
     return l;
 }
 
@@ -206,7 +210,7 @@ pub fn find_knot<const LEN: usize>(t: f32, t_vec: &Vec<f32>) -> usize {
     let t_scale = t * t_vec[t_vec.len() - 1];
     let base = l - p;
     for i in 0 ..=N{
-        let dt = t_vec[base + i + p] - t_vec[base + i];
+        let dt = t_vec[base + i + p + 1] - t_vec[base + i + 1];
         temp[i] = (control_points[i + base + 1] - control_points[i + base]) * (p as f32/ dt)
     }
 
@@ -233,8 +237,8 @@ fn de_boors_second_derivative<const LEN: usize>(control_points: &Vec<Vector2<f32
 
 
     for i in 0..=n1 {
-        let dt1 = t_vec[base + i + p ] - t_vec[base + i + 1];
-        let dt0 = t_vec[base + i + p] - t_vec[base + i];
+        let dt1 = t_vec[base + i + p  + 1] - t_vec[base + i + 2];
+        let dt0 = t_vec[base + i + p + 1] - t_vec[base + i + 1];
         let cprime_i = (control_points[i + base + 1] - control_points[i + base]) * (p as f32 / dt0);
         let cprime_next = (control_points[i + base + 2] - control_points[i + base + 1]) * (p as f32 / dt0);
         temp[i] = (cprime_next - cprime_i) * ((p - 1) as f32 / dt1);
@@ -283,6 +287,7 @@ fn render_spline(query: Query<(&Spline, &ControlledBy, &VisualizedBy)>,
             v.push(i as f32);
         }
         v.extend(std::iter::repeat((positions.len() - dim) as f32).take(dim + 1)); // last n zeros
+
 
 
 
@@ -467,7 +472,7 @@ for _ in 0..max_iter {
     }
 }
 
-    return t;
+    return t.min(1.0).max(0.0);;
 
 
 
