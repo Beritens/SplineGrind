@@ -198,7 +198,7 @@ pub fn find_knot<const LEN: usize>(t: f32, t_vec: &Vec<f32>) -> usize {
     return l;
 }
 
-#[inline(always)] fn de_boors_derivative<const LEN: usize>(
+#[inline(always)] pub fn de_boors_derivative<const LEN: usize>(
     control_points: &Vec<Vector2<f32>>,
     t: f32,
     t_vec: &Vec<f32>,
