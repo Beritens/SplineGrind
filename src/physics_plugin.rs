@@ -78,6 +78,7 @@ fn collide(
     position_query: Query<&Position, Without<VerletObject>>,
 ){
 
+    let line_widht = 5.0;
     // let dt = 0.1;
 
     let mut temp_buf: [Vector2<f32>; 4] = [Vector2::new(0.0, 0.0); 4];
@@ -106,7 +107,7 @@ fn collide(
             let l = crate::spines_plugin::find_knot::<4>(t, &v);
             let point = crate::spines_plugin::de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
             let normal = (pos.0 - point).normalize();
-            let overground = point + normal * 30.0;
+            let overground = point + normal *( 30.0 + line_widht);
             let vel = pos.0 - verlet.position_old;
             let old_offset = ((verlet.position_old + vel - overground).transpose() * normal).x + 0.02;
 
@@ -114,7 +115,7 @@ fn collide(
                verlet.position_old -= normal * old_offset;
             }
 
-            if (point - pos.0).norm() < 30.0 {
+            if (point - pos.0).norm() < 30.0 + line_widht {
 
                 pos. 0 = overground;
 

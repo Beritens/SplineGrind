@@ -428,12 +428,33 @@ let max_iter = 10;
 
 let mut min_dist = f32::INFINITY;
 let mut min_t : f32 = 0.5;
-for i in 0..200{
+let scale = 1.0 /v[v.len() - 1];
+for i in 0..positions.len() {
 
-    t = (1.0 / 200.0) * i as f32;
+    // t = (1.0 / 200.0) * i as f32;
+    // l = find_knot::<4>(t, &v);
+    // f = de_boors::<4>(&positions, t, &v, &mut temp1, l);
+    let dist = (positions[i]-point).norm_squared();
+
+    if(dist < min_dist){
+        min_dist = dist;
+        min_t = v[i + 4] * scale;
+    }
+
+
+}
+    let con_t = min_t;
+
+    let con_scale = 1.0 / positions.len() as f32;
+    min_dist = f32::INFINITY;
+
+for i in (-20i32)..=20 {
+
+    t = con_t + i as f32 * con_scale / 10.0;
     l = find_knot::<4>(t, &v);
     f = de_boors::<4>(&positions, t, &v, &mut temp1, l);
-    let dist = (f-point).norm_squared();
+
+    let dist = ( f - point).norm_squared();
 
     if(dist < min_dist){
         min_dist = dist;
