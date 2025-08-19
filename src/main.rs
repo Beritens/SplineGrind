@@ -53,6 +53,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     commands.spawn(Camera2d);
 
     let circle = meshes.add(Circle::new(30.0));
+    let mid_circle = meshes.add(Circle::new(5.0));
     let small_circle = meshes.add(Circle::new(1.0));
     let rec = meshes.add(Rectangle::new(1.0, 10.0));
     let color = Color::WHITE;
@@ -61,7 +62,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     // spline
     let mut splines:Vec<Entity> = Vec::with_capacity(100);
 
-    for i in 0..1{
+    for i in 0..2{
 
         splines.push(commands.spawn((crate::spines_plugin::Spline())).id());
     }
@@ -79,25 +80,25 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
                     // MeshMaterial2d(material.clone()),
     ));
 
-    for i in 0..100{
+    for i in 0..50{
         // let x_rand: f32 = rng.gen_range(-10.0..10.0);
         let x_rand: f32 = 0.0;
-        let x =  -800.0 + i as f32 * 20.0 + x_rand;
+        let x =  -1000.0 + i as f32 * 40.0 + x_rand;
         // let y: f32 = rng.gen_range(-5.0..5.0);
-        let y: f32 = sin(x*0.01)*100.0;
+        let y: f32 = sin(x*0.01)*0.0 - 200.0;
 
-        for j in 0..1{
+        for j in 0..2{
 
             commands.spawn((Position(Vector2::new(x,y)),
-                            crate::spines_plugin::Target(Vector2::new(x, y+(j as f32*5.0))),
+                            crate::spines_plugin::Target(Vector2::new(x - j as f32 * 1000.0, y+(j as f32*300.0))),
                             crate::spines_plugin::Movable {default_position: Vector2::new(x, y)},
-                            // Transform::from_xyz(
-                            //     x,
-                            //     y,
-                            //     0.0,
-                            // ),
-                            // Mesh2d(circle.clone()),
-                            // MeshMaterial2d(material.clone()),
+                            Transform::from_xyz(
+                                x,
+                                y,
+                                0.0,
+                            ),
+                            Mesh2d(mid_circle.clone()),
+                            MeshMaterial2d(material.clone()),
                             crate::spines_plugin::ControlPoint(splines[j]),
 
             ));
@@ -108,9 +109,9 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     }
 
 
-    for i in 0..1000 {
+    for i in 0..2000 {
 
-        for j in 0..1{
+        for j in 0..2{
 
             commands.spawn((Position(Vector2::new(5.0 * i as f32,0.0)),
                             Transform::from_xyz(
@@ -131,7 +132,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 
     for i in 0..1 {
 
-        for j in 0..1{
+        for j in 0..2{
 
             commands.spawn((Position(Vector2::new(5.0 * i as f32,0.0)),
                             Transform::from_xyz(
