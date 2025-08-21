@@ -13,7 +13,7 @@ use nalgebra::{Vector, Vector2};
 use rand::Rng;
 use crate::controls_plugin::{ControlsPlugin, Follower};
 use crate::physics_plugin::{Gravitate, PhysicsPlugin, VerletObject};
-use crate::spines_plugin::{Position, SplinePlugin};
+use crate::spines_plugin::{initBezierControlPoints, OldPosition, Position, SplinePlugin};
 
 struct OverlayColor;
 
@@ -24,7 +24,15 @@ impl OverlayColor {
 fn main() {
     let mut app = App::new();
     app.add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    // provide the ID selector string here
+                    canvas: Some("#bevy".into()),
+                    // ... any other window properties ...
+                    ..default()
+                }),
+                ..default()
+            }),
             SplinePlugin,
             PhysicsPlugin,
             ControlsPlugin,
@@ -68,7 +76,15 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
                     Gravitate(),
                     VerletObject{position_old: Vector2::new(100.0,300.0), acceleration: Vector2::new(0.0,0.0)}
     )).id();
-    commands.spawn((Camera2d, Follower(player)));
+    let cameraWidth = 2400.0;
+    commands.spawn((Camera2d,
+                    Projection::from(OrthographicProjection {
+                        scaling_mode: bevy::render::camera::ScalingMode::FixedHorizontal {
+                            viewport_width: cameraWidth
+                        },
+                        ..OrthographicProjection::default_2d()
+                    }),
+                    Follower(player)));
 
     let mid_circle = meshes.add(Circle::new(5.0));
     let small_circle = meshes.add(Circle::new(5.0));
@@ -95,18 +111,22 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
                     // MeshMaterial2d(material.clone()),
     ));
 
-    for i in 0..500{
+    for j in 0..1{
+        initBezierControlPoints(&mut commands, 500, splines[j], &mid_circle, &material);
+        for i in 0..500{
         // let x_rand: f32 = rng.gen_range(-10.0..10.0);
-        let x_rand: f32 = 0.0;
-        let x =  -1000.0 + i as f32 * 40.0 + x_rand;
-        // let y: f32 = rng.gen_range(-5.0..5.0);
-        let y: f32 = sin(x*0.01)*x * 0.01 + sin(x*0.0085)*x * 0.005 +  sin(x*0.0185)*x * 0.0076 - 200.0;
-        // let y: f32 = 0.3*x*x * 0.01 - 200.0;
+            let x_rand: f32 = 0.0;
+            let x =  -1000.0 + i as f32 * 40.0 + x_rand;
+            // let y: f32 = rng.gen_range(-5.0..5.0);
+            let y: f32 = sin(x*0.01)*x * 0.01 + sin(x*0.0085)*x * 0.005 +  sin(x*0.0185)*x * 0.0076 - 200.0;
+            // let y: f32 = 0.3*x*x * 0.01 - 200.0;
 
-        for j in 0..1{
+            let _x = x - j as f32 * 1000.0;
+            let _y = y+(j as f32*300.0);
 
             commands.spawn((Position(Vector2::new(x,y)),
-                            crate::spines_plugin::Target(Vector2::new(x - j as f32 * 1000.0, y+(j as f32*300.0))),
+                            crate::spines_plugin::Target(Vector2::new(_x, _y)),
+                            OldPosition(Vector2::new(_x, _y)),
                             crate::spines_plugin::Movable {default_position: Vector2::new(x, y)},
                             // Transform::from_xyz(
                             //     x,

@@ -12,17 +12,22 @@ use crate::physics_plugin::{PhySched, VerletObject};
 
 pub struct SplinePlugin;
 
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct SplineSet;
 impl Plugin for SplinePlugin {
     fn build(&self, app: &mut App) {
 
         app.add_systems(Update, (render_spline, render_gradient, update_position ));
-        app.add_systems(PhySched, (move_points,  push, go_to_target));
+        app.add_systems(PhySched, (update_old_pos, move_points, go_to_target,  push, ).chain().in_set(SplineSet));
         app.add_systems(PostUpdate, (follow_mouse.after(TransformSystem::TransformPropagate)));
     }
 }
 
 #[derive(Component, Debug, Clone)]
 pub struct Position(pub Vector2<f32>);
+
+#[derive(Component, Debug, Clone)]
+pub struct OldPosition(pub Vector2<f32>);
 
 #[derive(Component, Debug, Clone)]
 pub struct Moving();
@@ -54,6 +59,14 @@ pub struct ControlPoint(pub Entity);
 pub struct ControlledBy(Vec<Entity>);
 
 #[derive(Component)]
+#[relationship(relationship_target = BezierControlledBy)]
+pub struct BezierControlPoint(pub Entity);
+
+#[derive(Component, Deref)]
+#[relationship_target(relationship = BezierControlPoint)]
+pub struct BezierControlledBy(Vec<Entity>);
+
+#[derive(Component)]
 #[relationship(relationship_target = VisualizedBy)]
 pub struct Visualization(pub Entity);
 
@@ -71,6 +84,16 @@ pub struct GradientVisualizedBy(Vec<Entity>);
 
 
 
+fn update_old_pos(
+
+    mut query: Query<(&Position, &mut OldPosition)>
+){
+
+    for (new, mut old) in &mut query{
+        old.0 = new.0;
+    }
+}
+
 
 fn push(
     mut pushed_query: Query<(&mut Position, &Target, &Movable), Without<Pusher>>,
@@ -83,6 +106,7 @@ fn push(
             if(norm <= 150.0){
                 let force = 0.5 * (1.0 - norm/150.0);
                 pushed_pos.0 =pushed_pos.0 * (1.0 - force) +  (push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 150.0) * (force);
+                // pushed_pos.0 =(push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 450.0);
             }
             // else{
             //     target.0 = mov.default_position
@@ -98,6 +122,7 @@ fn go_to_target(
 
     for (mut pos, target) in &mut target_query{
         pos.0 = pos.0 * 0.98 + target.0 * 0.02;
+        // pos.0 =  target.0 ;
     }
 
 }
@@ -140,7 +165,7 @@ fn move_points(
     time: Res<Time>,
     mut position_query: Query<(&mut Position, &mut Transform, &Moving)>,
 ){
-    for (mut pos, mut trans, mov) in &mut position_query{
+    for (mut pos,  mut trans, mov) in &mut position_query{
         pos.0.y += 0.2 * sin(time.elapsed_secs()+ pos.0.x);
         trans.translation.y = pos.0.y;
     }
@@ -438,7 +463,7 @@ for i in 0..positions.len() {
 
     if(dist < min_dist){
         min_dist = dist;
-        min_t = v[i + 4] * scale;
+        min_t = v[i + 3] * scale;
     }
 
 
@@ -492,9 +517,41 @@ for _ in 0..max_iter {
         break;
     }
 }
+    // fallback if something goes wrong
+    if (f-point).norm_squared() > min_dist {
+        t = min_t;
+    }
 
     return t.min(1.0).max(0.0);;
 
 
+
+}
+
+pub fn initBezierControlPoints(commands: &mut Commands, n: usize, spline: Entity, circle: &Handle<Mesh>, material: &Handle<ColorMaterial>){
+    //insert 3 knots for every knot (in the middle, the ends already have 4 knots)
+    let number = (n - 4) * 3 + n;
+
+    for i in 0..number {
+        commands.spawn((Position(Vector2::new(0.0,0.0)),
+                        Transform::from_xyz(
+                            0.0,
+                            0.0,
+                            0.0,
+                        ),
+                        Mesh2d(circle.clone()),
+                        MeshMaterial2d(material.clone()),
+                        BezierControlPoint(spline),
+
+        ));
+    }
+}
+
+pub fn calculateBezierControlPoints(
+    //spline query
+){
+
+    // go over each knot
+    // the bezier control points
 
 }
