@@ -211,6 +211,43 @@ pub fn de_boors<const LEN: usize>(control_points: &Vec<Vector2<f32>>, t: f32, t_
 
     return temp[0];
 }
+fn cubic_bspline(u: f32, ti: f32, ti1: f32, ti2: f32, ti3: f32, ti4: f32, ti5: f32, ti6:f32,
+                 di: Vector2<f32>, di1: Vector2<f32>, di2: Vector2<f32>, di3: Vector2<f32>) -> Vector2<f32> {
+
+
+    return  (
+        ((ti1 - ti4)*(ti2 - ti4)*(ti3 - u)*((ti2 - ti5)*(ti3 - u)*(di2*(-ti6 + u) + di3*(ti3 - u)) + (ti3 - ti6)*(-ti5 + u)*(di1*(-ti5 + u) + di2*(ti2 - u))) + (ti3 - ti5)*(ti3 - ti6)*(-ti4 + u)*((ti1 - ti4)*(ti2 - u)*(di1*(-ti5 + u) + di2*(ti2 - u)) + (ti2 - ti5)*(-ti4 + u)*(di*(-ti4 + u) + di1*(ti1 - u))))/((ti1 - ti4)*(ti2 - ti4)*(ti2 - ti5)*(ti3 - ti4)*(ti3 - ti5)*(ti3 - ti6))
+    );
+
+}
+
+#[inline(always)]
+pub fn not_de_boors<const LEN: usize>(control_points: &Vec<Vector2<f32>>, t: f32, t_vec: &Vec<f32>,temp: &mut [Vector2<f32>; LEN], l: usize) -> Vector2<f32> {
+    //assume uniform knots
+    let N: usize = LEN - 1;
+    let base = l - N;
+
+
+    let u = t * t_vec[t_vec.len() - 1];
+
+
+    let ti = t_vec[base];
+    let ti1 = t_vec[base+1];
+    let ti2 = t_vec[base+2];
+    let ti3 = t_vec[base+3];
+    let ti4 = t_vec[base+4];
+    let ti5 = t_vec[base+5];
+    let ti6 = t_vec[base+6];
+
+
+    let di = control_points[base];
+    let di1 = control_points[base+1];
+    let di2 = control_points[base+2];
+    let di3 = control_points[base+3];
+
+
+    return cubic_bspline(u, ti, ti1, ti2, ti3, ti4, ti5, ti6, di, di1, di2, di3);
+}
 
 #[inline(always)]
 pub fn find_knot<const LEN: usize>(t: f32, t_vec: &Vec<f32>) -> usize {
@@ -321,7 +358,7 @@ fn render_spline(query: Query<(&Spline, &ControlledBy, &VisualizedBy)>,
             // let point = de_casteljau(positions.clone(), t);
 
             let l = find_knot::<4>(t, &v);
-            let point = de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
+            let point = not_de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
             if let Ok(mut transform) = transforms.get_mut(visual_points[i as usize]) {
                 transform.translation.x = point.x;
                 transform.translation.y = point.y;
@@ -547,11 +584,3 @@ pub fn initBezierControlPoints(commands: &mut Commands, n: usize, spline: Entity
     }
 }
 
-pub fn calculateBezierControlPoints(
-    //spline query
-){
-
-    // go over each knot
-    // the bezier control points
-
-}
