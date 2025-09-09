@@ -1,19 +1,24 @@
+use std::collections::HashMap;
 use std::f32::consts::PI;
+use std::iter::Map;
+use std::mem;
 use bevy::app::{App, FixedUpdate, Plugin};
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::math::ops::atan2;
 use bevy::math::Quat;
-use bevy::prelude::{Component, IntoScheduleConfigs, Query, Update, With, Without, World};
+use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Query, SystemSet, Update, With, Without, World};
 use nalgebra::{Normed, Vector2};
-use crate::spines_plugin::{ControlledBy, FollowMouse, OldPosition, Position, Spline, SplinePlugin, SplineSet};
+use crate::spines_plugin::{point_inside, ControlledBy, FollowMouse, HiddenControlledBy, OldPosition, Position, Spline, SplinePlugin, SplineSet};
 
 pub struct PhysicsPlugin;
+
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct PhySet;
 
 impl Plugin for PhysicsPlugin {
     fn build(&self, app: &mut App) {
         app.init_schedule(PhySched);
-        app.add_systems(PhySched,((update_position, apply_gravity.before(update_position), collide.before(update_position)).after(SplineSet)));
-        app.add_systems(FixedUpdate,run_my_schedule);
+        app.add_systems(FixedUpdate,((update_position, apply_gravity.before(update_position), collide.before(update_position),reset_collisions.before(collide)).in_set(PhySet).after(SplineSet)));
     }
 }
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
@@ -21,7 +26,7 @@ pub struct PhySched;
 
 fn run_my_schedule(world: &mut World) {
     // Run your schedule multiple times per frame:
-    for _ in 0..8 {
+    for _ in 0..1 {
         world.run_schedule(PhySched);
     }
 }
@@ -33,6 +38,42 @@ pub struct VerletObject{
     pub position_old: Vector2<f32>,
     pub acceleration: Vector2<f32>,
 
+}
+
+pub struct SplineColliderInfo {
+    pub intersections: i32,
+    pub start_sector: i32,
+    pub end_sector: i32,
+}
+
+#[derive(Component)]
+pub struct SplineMemory{
+    pub spline_intersections: HashMap<Entity, SplineColliderInfo>,
+
+}
+
+
+#[derive(Clone)]
+pub struct Collision{
+    pub other: Entity,
+    pub point: Vector2<f32>,
+    pub normal: Vector2<f32>,
+}
+#[derive(Component)]
+pub struct Collider{
+   pub collisions: Vec<Collision>,
+    pub collisions_old: Vec<Collision>,
+
+}
+impl Collider {
+    pub fn new() -> Self {
+        Self { collisions: Vec::new(), collisions_old: Vec::new() }
+    }
+
+    pub fn add_collision(&mut self, c: Collision) {
+        self.collisions.push(c.clone());
+        self.collisions_old.push(c);
+    }
 }
 
 #[derive(Component)]
@@ -53,6 +94,15 @@ fn apply_gravity(
 
 }
 
+fn reset_collisions(
+
+    mut query: Query<(&mut Collider)>
+){
+    for (mut collider) in &mut query {
+        collider.collisions_old = mem::take(&mut collider.collisions);
+    }
+
+}
 fn update_position(
 
 
@@ -72,15 +122,12 @@ fn update_position(
 
     }
 }
-fn cross2d(a: Vector2<f32>, b: Vector2<f32>) -> f32 {
-    a.x * b.y - a.y * b.x
-}
 
 
 fn collide(
-    mut query: Query<(&mut Position, &mut VerletObject), (With<VerletObject>)>,
-    spline_query: Query<(&Spline, &ControlledBy)>,
-    position_query: Query<(&Position, &OldPosition), Without<VerletObject>>,
+    mut query: Query<(&mut Position, &mut VerletObject, &mut Collider, &mut SplineMemory)>,
+    spline_query: Query<(&Spline, &ControlledBy, &HiddenControlledBy, Entity)>,
+    position_query: Query<(&Position), Without<VerletObject>>,
 ){
 
     let line_widht = 5.0;
@@ -89,21 +136,26 @@ fn collide(
     let mut temp_buf: [Vector2<f32>; 4] = [Vector2::new(0.0, 0.0); 4];
 
 
-    for (spline, controlled_by) in &spline_query {
+    for (spline, controlled_by, hidden_controlled_by, entity) in &spline_query {
         let control_points = controlled_by.as_slice();
+        let hidden_control_points = hidden_controlled_by.as_slice();
 
 
 
-        let positions_new_old: Vec<(Vector2<f32>, Vector2<f32>)> = control_points
+        let positions: Vec<Vector2<f32>> = control_points
             .iter()
             .filter_map(|e| position_query.get(*e).ok())
-            .map(|(p, po)| (p.0, po.0))
+            .map(|p| p.0)
             .collect();
-        let positions = positions_new_old.iter().map(|e| e.0.clone()).collect();
-        // let positions_old = positions_new_old.iter().map(|e| e.1.clone()).collect();
+
+        let hidden_positions: Vec<Vector2<f32>> = hidden_control_points
+            .iter()
+            .filter_map(|e| position_query.get(*e).ok())
+            .map(|p| p.0)
+            .collect();
 
 
-        for (mut pos, mut verlet) in &mut query {
+        for (mut pos, mut verlet, mut collider, mut spline_memory) in &mut query {
 
 
             let t = crate::spines_plugin::get_nearest_spline_point(pos.0, &positions);
@@ -131,7 +183,7 @@ fn collide(
 
             // let normal_old: Vector2<f32> = (verlet.position_old - point_old).normalize();
 
-            let cross = cross2d(normal, grad);
+            // let cross = cross2d(normal, grad);
             // let cross_old = cross2d(normal_old, grad_old);
 
             // let angle = {
@@ -141,17 +193,27 @@ fn collide(
             // };
 
             let mut underground = false;
-
-            if(cross >= 0.0) {
+            let (inside, count) = point_inside(
+                pos.0,
+                &positions,
+                spline_memory
+                    .spline_intersections
+                    .get(&entity)
+            );
+            if(inside) {
                 underground= true;
                 normal = normal * -1.0;
+
+            }
+            else{
+               spline_memory.spline_intersections.insert(entity, count);
             }
 
             // if(angle.abs() > (PI/10.0)) {
             //     underground= true;
             //     normal = normal * -1.0;
             // }
-            let overground = point + normal *( 30.0 + line_widht);
+            let overground = point + normal *( 60.0 + line_widht);
 
 
             let vel = pos.0 - verlet.position_old;
@@ -161,11 +223,16 @@ fn collide(
                verlet.position_old -= normal * old_offset;
             }
 
-            if ((pos.0 - point).transpose() * normal).x < 30.0 + line_widht {
+            if ((pos.0 - point).transpose() * normal).x < 60.0 + line_widht {
 
                 pos. 0 = overground;
 
+                collider.collisions.push(Collision{other: entity, point: point, normal: normal});
+
             }
+            // if(underground){
+            //     println!("underground");
+            // }
             // if(underground){
             //
             //     println!("______________");

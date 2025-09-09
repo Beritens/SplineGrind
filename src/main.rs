@@ -1,8 +1,10 @@
 mod spines_plugin;
 mod physics_plugin;
 mod controls_plugin;
+mod player_plugin;
+mod assets_plugin;
 
-use bevy::math::ops::sin;
+use bevy::math::ops::{cos, sin};
 use bevy::{
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     prelude::*,
@@ -11,9 +13,11 @@ use bevy::{
 
 use nalgebra::{Vector, Vector2};
 use rand::Rng;
+use crate::assets_plugin::AssetsPlugin;
 use crate::controls_plugin::{ControlsPlugin, Follower};
-use crate::physics_plugin::{Gravitate, PhysicsPlugin, VerletObject};
-use crate::spines_plugin::{initBezierControlPoints, OldPosition, Position, SplinePlugin};
+use crate::physics_plugin::{Collider, Gravitate, PhysicsPlugin, VerletObject};
+use crate::player_plugin::PlayerPlugin;
+use crate::spines_plugin::{OldPosition, Position, SplinePlugin};
 
 struct OverlayColor;
 
@@ -36,6 +40,8 @@ fn main() {
             SplinePlugin,
             PhysicsPlugin,
             ControlsPlugin,
+            PlayerPlugin,
+            AssetsPlugin,
             FpsOverlayPlugin {
                 config: FpsOverlayConfig {
                     text_config: TextFont {
@@ -55,7 +61,7 @@ fn main() {
                 },
             },
         ));
-    app.insert_resource(Time::<Fixed>::from_seconds(0.01666666));
+    app.insert_resource(Time::<Fixed>::from_seconds(0.002));
     app.add_systems(Startup, setup);
     app.run();
 }
@@ -65,28 +71,8 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     let circle = meshes.add(Circle::new(30.0));
     let color = Color::WHITE;
     let material = materials.add(color);
-    let player = commands.spawn((Position(Vector2::new(100.0, 300.0)),
-                    Transform::from_xyz(
-                        0.0,
-                        0.0,
-                        0.0,
-                    ),
-                    Mesh2d(circle.clone()),
-                    MeshMaterial2d(material.clone()),
-                    Gravitate(),
-                    VerletObject{position_old: Vector2::new(100.0,300.0), acceleration: Vector2::new(0.0,0.0)}
-    )).id();
-    let cameraWidth = 2400.0;
-    commands.spawn((Camera2d,
-                    Projection::from(OrthographicProjection {
-                        scaling_mode: bevy::render::camera::ScalingMode::FixedHorizontal {
-                            viewport_width: cameraWidth
-                        },
-                        ..OrthographicProjection::default_2d()
-                    }),
-                    Follower(player)));
 
-    let mid_circle = meshes.add(Circle::new(5.0));
+    let mid_circle = meshes.add(Circle::new(10.0));
     let small_circle = meshes.add(Circle::new(5.0));
     let rec = meshes.add(Rectangle::new(2.0, 15.0));
 
@@ -112,14 +98,12 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     ));
 
     for j in 0..1{
-        initBezierControlPoints(&mut commands, 500, splines[j], &mid_circle, &material);
         for i in 0..500{
-        // let x_rand: f32 = rng.gen_range(-10.0..10.0);
-            let x_rand: f32 = 0.0;
-            let x =  -1000.0 + i as f32 * 40.0 + x_rand;
-            // let y: f32 = rng.gen_range(-5.0..5.0);
+            let x =  -1000.0 + i as f32 * 40.0;
             let y: f32 = sin(x*0.01)*x * 0.01 + sin(x*0.0085)*x * 0.005 +  sin(x*0.0185)*x * 0.0076 - 200.0;
-            // let y: f32 = 0.3*x*x * 0.01 - 200.0;
+
+            // let x = -sin(0.1 * i as f32) * (50.0 + 4.0 *i as f32);
+            // let y = cos(0.1 * i as f32) * (50.0 + 4.0 *i as f32);
 
             let _x = x - j as f32 * 1000.0;
             let _y = y+(j as f32*300.0);
@@ -142,7 +126,19 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 
         }
 
+        commands.spawn((Position(Vector2::new(10000.0,-1000.0)),
+                        crate::spines_plugin::HiddenControlPoint(splines[j]),
+
+        ));
+
+        commands.spawn((Position(Vector2::new(-1100.0,-1000.0)),
+                        crate::spines_plugin::HiddenControlPoint(splines[j]),
+
+        ));
+
     }
+
+
 
 
     for i in 0..5000 {
@@ -166,7 +162,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 
     }
 
-    for i in 0..1 {
+    for i in 0..3 {
 
         for j in 0..1{
 

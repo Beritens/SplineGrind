@@ -4,11 +4,11 @@ use bevy::{
     prelude::*,
     text::FontSmoothing,
 };
-
+use bevy::render::render_resource::encase::private::RuntimeSizedArray;
 use nalgebra::{Vector, Vector2, Vector3};
 use rand::Rng;
 use roots::{find_root_newton_raphson, SimpleConvergency};
-use crate::physics_plugin::{PhySched, VerletObject};
+use crate::physics_plugin::{PhySched, SplineColliderInfo, SplineMemory, VerletObject};
 
 pub struct SplinePlugin;
 
@@ -18,7 +18,7 @@ impl Plugin for SplinePlugin {
     fn build(&self, app: &mut App) {
 
         app.add_systems(Update, (render_spline, render_gradient, update_position ));
-        app.add_systems(PhySched, (update_old_pos, move_points, go_to_target,  push, ).chain().in_set(SplineSet));
+        app.add_systems(FixedUpdate, (update_old_pos, move_points, go_to_target,  push, ).chain().in_set(SplineSet));
         app.add_systems(PostUpdate, (follow_mouse.after(TransformSystem::TransformPropagate)));
     }
 }
@@ -59,12 +59,12 @@ pub struct ControlPoint(pub Entity);
 pub struct ControlledBy(Vec<Entity>);
 
 #[derive(Component)]
-#[relationship(relationship_target = BezierControlledBy)]
-pub struct BezierControlPoint(pub Entity);
+#[relationship(relationship_target = HiddenControlledBy)]
+pub struct HiddenControlPoint(pub Entity);
 
 #[derive(Component, Deref)]
-#[relationship_target(relationship = BezierControlPoint)]
-pub struct BezierControlledBy(Vec<Entity>);
+#[relationship_target(relationship = HiddenControlPoint)]
+pub struct HiddenControlledBy(Vec<Entity>);
 
 #[derive(Component)]
 #[relationship(relationship_target = VisualizedBy)]
@@ -103,9 +103,9 @@ fn push(
 
         for (mut pushed_pos, mut target, mov) in &mut pushed_query{
             let norm = (pushed_pos.0 - push_pos.0).norm();
-            if(norm <= 150.0){
-                let force = 0.5 * (1.0 - norm/150.0);
-                pushed_pos.0 =pushed_pos.0 * (1.0 - force) +  (push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 150.0) * (force);
+            if(norm <= 190.0){
+                let force = 0.5 * (1.0 - norm/190.0);
+                pushed_pos.0 =pushed_pos.0 * (1.0 - force) +  (push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 190.0) * (force);
                 // pushed_pos.0 =(push_pos.0 + (pushed_pos.0 - push_pos.0).normalize() * 450.0);
             }
             // else{
@@ -358,12 +358,72 @@ fn render_spline(query: Query<(&Spline, &ControlledBy, &VisualizedBy)>,
             // let point = de_casteljau(positions.clone(), t);
 
             let l = find_knot::<4>(t, &v);
-            let point = not_de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
+            let point = de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
             if let Ok(mut transform) = transforms.get_mut(visual_points[i as usize]) {
                 transform.translation.x = point.x;
                 transform.translation.y = point.y;
             }
             t = t+step;
+
+
+        }
+
+    }
+}
+
+fn render_intersections(query: Query<(&Spline, &ControlledBy, &GradientVisualizedBy)>,
+                   position_query: Query<&Position, Without<VerletObject>>,
+                   mut object_query: Query<(&mut Position), (With<VerletObject>)>,
+                   mut transforms: Query<&mut Transform>,
+) {
+
+    let dim = 3;
+    let mut temp_buf: [Vector2<f32>; 4] = [Vector2::new(0.0, 0.0); 4];
+
+    let Ok(object) = object_query.single() else {
+    return;
+    };
+    for (spline, controlled_by, visualized_by) in &query {
+        let control_points = controlled_by.as_slice();
+
+        let positions: Vec<Vector2<f32>> = control_points
+        .iter()
+        .filter_map(|e| position_query.get(*e).ok())
+        .map(|p| p.0)
+        .collect();
+
+        let visual_points = visualized_by.as_slice();
+
+        let n = visual_points.len();
+        let step = 1.0 / n as f32;
+
+
+        let mut v:Vec<f32> = Vec::with_capacity(positions.len() + dim + 1);
+        v.extend(std::iter::repeat(0.0).take(dim + 1)); // first n zeros
+        for i in 1..(positions.len() - dim ) {
+        v.push(i as f32);
+        }
+        v.extend(std::iter::repeat((positions.len() - dim) as f32).take(dim + 1)); // last n zeros
+
+
+
+        let mut t = get_nearest_spline_point(object.0, &positions);
+
+
+        for i in 0..n {
+        let l = find_knot::<4>(t, &v);
+        let point = de_boors::<4>(&positions, t, &v, &mut temp_buf, l);
+        let grad = de_boors_derivative::<4>(&positions, t, &v, &mut temp_buf, l);
+        // let dist_grad = (2.0 * (point - mouse.0).transpose() * grad);
+        if let Ok(mut transform) = transforms.get_mut(visual_points[i as usize]) {
+        transform.translation.x = point.x;
+        transform.translation.y = point.y;
+        // transform.scale = Vec3::splat(1.0) * (dist_grad.x * 0.001);
+
+        let angle = atan2(grad.y, grad.x);
+        transform.rotation = Quat::from_rotation_z(angle);
+        }
+        // t = t+step;
 
 
         }
@@ -565,22 +625,79 @@ for _ in 0..max_iter {
 
 }
 
-pub fn initBezierControlPoints(commands: &mut Commands, n: usize, spline: Entity, circle: &Handle<Mesh>, material: &Handle<ColorMaterial>){
-    //insert 3 knots for every knot (in the middle, the ends already have 4 knots)
-    let number = (n - 4) * 3 + n;
+fn goes_through_line(
+    p1: Vector2<f32>,
+    p2: Vector2<f32>,
+    point: Vector2<f32>,
+) -> bool {
 
-    for i in 0..number {
-        commands.spawn((Position(Vector2::new(0.0,0.0)),
-                        Transform::from_xyz(
-                            0.0,
-                            0.0,
-                            0.0,
-                        ),
-                        Mesh2d(circle.clone()),
-                        MeshMaterial2d(material.clone()),
-                        BezierControlPoint(spline),
-
-        ));
+    let (bigger, smaller) = if p1.x > p2.x {
+        (p1, p2)
+    } else {
+        (p2, p1)
+    };
+    if(smaller.x == bigger.x){
+        return false;
     }
+    let f = (point.x - smaller.x)/ (bigger.x - smaller.x);
+
+    return (((1.0 - f)* smaller.y + f * bigger.y) > point.y) && f>0.0 && f<= 1.0;
+
 }
+
+pub fn point_inside(
+    point: Vector2<f32>,
+    positions: &Vec<Vector2<f32>>,
+    spline_info: Option<&SplineColliderInfo>
+) -> (bool, SplineColliderInfo) {
+
+    let mut last: &Vector2<f32> = &positions[0];
+    let mut count = 0;
+
+    for pos in &positions[1..] {
+       count += goes_through_line(*last, *pos, point) as i32;
+        last = pos;
+    }
+
+    let start_x = positions[0].x < point.x;
+    let start_y = positions[0].y < point.y;
+    let end_x = positions[positions.len()-1].x < point.x;
+    let end_y = positions[positions.len()-1].y < point.y;
+
+    let splinco = SplineColliderInfo{intersections: count, start_sector: start_x as i32 + start_y as i32 * 2, end_sector: end_x as i32 + end_y as i32 * 2 };
+
+
+    // for pos in hidden {
+    //     count += goes_through_line(*last, *pos, point) as i32;
+    //     last = pos;
+    // }
+
+
+    // count += goes_through_line(*last, positions[0], point) as i32;
+
+
+
+
+    if let Some(spl) = spline_info{
+        let mut parity_modifier = 0;
+        if(spl.start_sector == 0 && splinco.start_sector == 1 || spl.start_sector == 1 && splinco.start_sector == 0){
+           parity_modifier += 1;
+        }
+
+        if(spl.end_sector == 0 && splinco.end_sector == 1 || spl.end_sector == 1 && splinco.end_sector == 0){
+            parity_modifier += 1;
+        }
+
+        // println!("{}, {}", spl.start_sector, splinco.start_sector);
+        // println!("{}, {}", spl.end_sector, splinco.end_sector);
+
+        let inters_old = spl.intersections;
+        let inters_new = splinco.intersections;
+
+        return (inters_old%2 != (parity_modifier + inters_new)%2, splinco);
+    }
+    return (false, splinco);
+
+}
+
 

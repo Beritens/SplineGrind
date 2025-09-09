@@ -2,12 +2,10 @@ import sympy as sp
 
 u = sp.Symbol("u")
 ti, ti1, ti2, ti3, ti4, ti5, ti6 = sp.symbols("ti ti1 ti2 ti3 ti4 ti5 ti6")
+
 di, di1, di2, di3 = sp.symbols("di di1 di2 di3")
 
-p = sp.symbols("p")
-
-# def blend(A, B, a, b):
-#     return (1 - (u - a)/(b - a)) * A + ((u - a)/(b - a)) * B
+y = sp.Symbol("y")
 
 def blend(A, B, tir, tin):
     return (1 - (u - tir)/(tin - tir)) * A + ((u - tir)/(tin - tir)) * B
@@ -25,21 +23,10 @@ d1_2 = blend(d1_1, d2_1, ti3, ti5)
 
 d0_3 = blend(d0_2, d1_2, ti3, ti4)   # final cubic
 
-# expanded = sp.expand(d0_3)
+solutions = sp.solve(sp.Eq(d0_3, y), u)
+print(".....................")
 
-
-
-
-rust = sp.rust_code(sp.simplify(d0_3))
-print(rust)
-
-print("_________distance______")
-
-distance = d0_3 - p ?????
-
-
-print("_________derivative_distance______")
-derivative = sp.diff(d0_3, u)
-derivative_simplified = sp.simplify(derivative)
-print(sp.rust_code(derivative_simplified))
+for i, sol in enumerate(solutions):
+    print(f"Solution {i}:")
+    print(sp.rust_code(sol))
 
